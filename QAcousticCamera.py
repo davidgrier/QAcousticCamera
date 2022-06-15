@@ -3,7 +3,6 @@ from QInstrument.instruments import (QSR830Widget, QDS345Widget)
 from PyQt5.QtCore import pyqtSlot
 from PyQt5.QtWidgets import QDesktopWidget
 import numpy as np
-import pandas as pd
 
 
 class QAcousticCamera(QScanner):
@@ -17,11 +16,8 @@ class QAcousticCamera(QScanner):
 
     def adjustSize(self):
         self.resize(QDesktopWidget().availableGeometry(self).size() * 0.8)
-        # width1 = self.ui.controls.minimumSize().width()
-        # width2 = self.ui.scanWidget.minimumSize().width()
-        width = 512  # max(width1, width2)
+        width = 512
         self.ui.splitter.setSizes({width, width})
-#        super().adjustSize()
 
     def addInstruments(self):
         self.source = QDS345Widget()
@@ -37,14 +33,14 @@ class QAcousticCamera(QScanner):
 
     @pyqtSlot()
     def saveSettings(self):
-        # self.config.save(self.source)
-        # self.config.save(self.lockin)
+        self.config.save(self.source)
+        self.config.save(self.lockin)
         super().saveSettings()
 
     @pyqtSlot()
     def restoreSettings(self):
-        # self.config.restore(self.source)
-        # self.config.restore(self.lockin)
+        self.config.restore(self.source)
+        self.config.restore(self.lockin)
         super().restoreSettings()
 
     @pyqtSlot()
@@ -61,7 +57,7 @@ class QAcousticCamera(QScanner):
     @pyqtSlot()
     def finishScan(self):
         self.source.device.mute = True
-        np.savetext('data.csv', np.array(self.data), delimiter=',')
+        np.savetxt('data.csv', np.array(self.data), delimiter=',')
 
 
 def main():
