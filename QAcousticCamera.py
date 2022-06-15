@@ -28,12 +28,12 @@ class QAcousticCamera(QScanner):
         self.lockin = QSR830Widget()
         self.ui.controlsLayout.addWidget(self.source)
         self.ui.controlsLayout.addWidget(self.lockin)
+        self.source.device.mute = True
 
     def connectSignals(self):
         self.ui.scan.clicked.connect(self.startScan)
         self.scanner.dataReady.connect(self.readData)
         self.scanner.scanFinished.connect(self.finishScan)
-
 
     @pyqtSlot()
     def saveSettings(self):
@@ -49,6 +49,7 @@ class QAcousticCamera(QScanner):
 
     @pyqtSlot()
     def startScan(self):
+        self.source.device.mute = False
         self.data = []
 
     @pyqtSlot(np.ndarray)
@@ -59,6 +60,7 @@ class QAcousticCamera(QScanner):
 
     @pyqtSlot()
     def finishScan(self):
+        self.source.device.mute = True
         np.savetext('data.csv', np.array(self.data), delimiter=',')
 
 
