@@ -3,6 +3,7 @@ from QInstrument.instruments import (QSR830Widget, QDS345Widget)
 from PyQt5.QtCore import pyqtSlot
 from PyQt5.QtWidgets import QDesktopWidget
 import numpy as np
+import pandas as pd
 
 
 class QAcousticCamera(QScanner):
@@ -29,7 +30,10 @@ class QAcousticCamera(QScanner):
         self.ui.controlsLayout.addWidget(self.lockin)
 
     def connectSignals(self):
+        self.ui.scan.clicked.connect(self.startScan)
         self.scanner.dataReady.connect(self.readData)
+        self.scanner.scanFinished.connect(self.finishScan)
+
 
     @pyqtSlot()
     def saveSettings(self):
@@ -43,10 +47,19 @@ class QAcousticCamera(QScanner):
         # self.config.restore(self.lockin)
         super().restoreSettings()
 
+    @pyqtSlot()
+    def startScan(self):
+        self.data = []
+
     @pyqtSlot(np.ndarray)
     def readData(self, position):
         freq, amplitude, phase = self.lockin.device.report()
+        self.data.append([position, amplitude, phase])
         print(freq, amplitude, phase)
+
+    @pyqtSlot()
+    def finishScan(self):
+        np.savetext('data.csv', np.array(self.data), delimiter=',')
 
 
 def main():
