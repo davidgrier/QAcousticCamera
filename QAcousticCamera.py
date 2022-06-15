@@ -2,6 +2,7 @@ from QPolargraph import QScanner
 from QInstrument.instruments import (QSR830Widget, QDS345Widget)
 from PyQt5.QtCore import pyqtSlot
 from PyQt5.QtWidgets import QDesktopWidget
+import numpy as np
 
 
 class QAcousticCamera(QScanner):
@@ -10,6 +11,7 @@ class QAcousticCamera(QScanner):
         super().__init__(*args, **kwargs)
         self.setWindowTitle('QAcousticCamera')
         self.addInstruments()
+        self.connectSignals()
         self.adjustSize()
 
     def adjustSize(self):
@@ -26,6 +28,9 @@ class QAcousticCamera(QScanner):
         self.ui.controlsLayout.addWidget(self.source)
         self.ui.controlsLayout.addWidget(self.lockin)
 
+    def connectSignals(self):
+        self.scanner.dataReady.connect(self.readData)
+
     @pyqtSlot()
     def saveSettings(self):
         # self.config.save(self.source)
@@ -37,6 +42,11 @@ class QAcousticCamera(QScanner):
         # self.config.restore(self.source)
         # self.config.restore(self.lockin)
         super().restoreSettings()
+
+    @pyqtSlot(np.ndarray)
+    def readData(self, position):
+        freq, amplitude, phase = self.lockin.device.report()
+        print(freq, amplitude, phase)
 
 
 def main():
