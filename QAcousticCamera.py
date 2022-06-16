@@ -71,23 +71,20 @@ class QAcousticCamera(QScanner):
         #self.source.device.mute = True
 
     @pyqtSlot()
-    @pyqtSlot(str)
     def saveData(self, filename=None):
         filename = filename or self.config.filename('acam', 'csv')
-        logger.debug(f'Saving data: {filename}')
         np.savetxt(filename, np.array(self.data), delimiter=',')
-        self.statusBar().showMessage(f'Saving data: {filename}')
+        self.statusBar().showMessage(f'Data saved to {filename}')
 
     @pyqtSlot()
     def saveDataAs(self):
         dialog = QFileDialog.getSaveFileName
-        default = self.config.filename('acam', 'csv')
-        filename = dialog(self, 'Save Data', default, 'CSV (*.csv)')
+        default = self.config.filename('acam', '.csv')
+        filename, _ = dialog(self, 'Save Data', default, 'CSV (*.csv)')
         if filename:
             self.saveData(filename)
         else:
-            logger.debug('Data not saved')
-            self.statusBar().showMessage('Data not saved')
+            self.statusBar().showMessage('No file selected: Data not saved')
 
 
 def main():
