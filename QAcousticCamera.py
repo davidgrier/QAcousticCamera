@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import (QDesktopWidget, QFileDialog)
 import numpy as np
 import logging
 
-from QInstrument.instruments import QFakeDS345
+from QInstrument.instruments import (QFakeDS345, QFakeSR830)
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
@@ -28,9 +28,10 @@ class QAcousticCamera(QScanner):
         self.ui.splitter.setSizes({width, width})
 
     def addInstruments(self, fake):
-        device = QFakeDS345() if fake else None
-        self.source = QDS345Widget(device=device)
-        self.lockin = QSR830Widget()
+        source = QFakeDS345() if fake else None
+        lockin = QFakeSR830() if fake else None
+        self.source = QDS345Widget(device=source)
+        self.lockin = QSR830Widget(device=lockin)
         self.ui.controlsLayout.addWidget(self.source)
         self.ui.controlsLayout.addWidget(self.lockin)
         self.config.restore(self.source)
