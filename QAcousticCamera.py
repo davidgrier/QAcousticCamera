@@ -58,10 +58,9 @@ class QAcousticCamera(QScanner):
 
     @pyqtSlot(np.ndarray)
     def readData(self, position):
-        logger.debug('Reading data')
         freq, amplitude, phase = self.lockin.device.report()
         self.data.append([position, amplitude, phase])
-        print(freq, amplitude, phase)
+        logger.debug(f'Reading data: {amplitude} {phase}')
 
     @pyqtSlot()
     def finishScan(self):
