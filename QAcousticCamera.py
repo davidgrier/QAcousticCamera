@@ -9,7 +9,7 @@ from QInstrument.instruments import (QFakeDS345, QFakeSR830)
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.WARNING)
 
 
 class QAcousticCamera(QScanner):
@@ -38,11 +38,9 @@ class QAcousticCamera(QScanner):
         self.config.restore(self.lockin)
 
     def connectSignals(self):
-        self.ui.scan.clicked.connect(self.startScan)
         self.ui.actionSaveData.triggered.connect(self.saveData)
         self.ui.actionSaveDataAs.triggered.connect(self.saveDataAs)
         self.scanner.dataReady.connect(self.readData)
-        self.scanner.scanFinished.connect(self.finishScan)
 
     @pyqtSlot()
     def saveSettings(self):
@@ -51,25 +49,25 @@ class QAcousticCamera(QScanner):
         super().saveSettings()
 
     @pyqtSlot()
-    def startScan(self):
-        logger.debug('Starting scan')
+    def scanStarted(self):
         self.source.device.mute = False
         self.data = list()
+        super().scanStarted()
 
     @pyqtSlot(np.ndarray)
     def readData(self, position):
         freq, amplitude, phase = self.lockin.device.report()
-        self.data.append([position, amplitude, phase])
+        self.data.append([*position, amplitude, phase])
         logger.debug(f'Reading data: {amplitude} {phase}')
 
     @pyqtSlot()
-    def finishScan(self):
-        logger.debug('Finishing scan')
+    def scanFinished(self):
+        super().scanFinished()
         self.source.device.mute = True
 
     @pyqtSlot()
     def saveData(self, filename=None):
-        filename = filename or self.config.filename('acam', 'csv')
+        filename = filename or self.config.filename('acam', '.csv')
         np.savetxt(filename, np.array(self.data), delimiter=',')
         self.statusBar().showMessage(f'Data saved to {filename}')
 
