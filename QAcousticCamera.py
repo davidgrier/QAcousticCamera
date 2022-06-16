@@ -47,7 +47,7 @@ class QAcousticCamera(QScanner):
     @pyqtSlot()
     def saveSettings(self):
         self.config.save(self.source)
-        # self.config.save(self.lockin)
+        self.config.save(self.lockin)
         super().saveSettings()
 
     @pyqtSlot()
