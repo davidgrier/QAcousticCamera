@@ -5,6 +5,7 @@ from PyQt5.QtWidgets import (QDesktopWidget, QFileDialog)
 import numpy as np
 import logging
 
+from QInstrument.instruments import QFakeDS345
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
@@ -13,10 +14,10 @@ logger.setLevel(logging.DEBUG)
 
 class QAcousticCamera(QScanner):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, fake=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.setWindowTitle('QAcousticCamera')
-        self.addInstruments()
+        self.addInstruments(fake)
         self.connectSignals()
         self.adjustSize()
         self.data = list()
@@ -26,12 +27,14 @@ class QAcousticCamera(QScanner):
         width = 512
         self.ui.splitter.setSizes({width, width})
 
-    def addInstruments(self):
-        self.source = QDS345Widget()
+    def addInstruments(self, fake):
+        device = QFakeDS345() if fake else None
+        self.source = QDS345Widget(device=device)
         self.lockin = QSR830Widget()
         self.ui.controlsLayout.addWidget(self.source)
         self.ui.controlsLayout.addWidget(self.lockin)
-        #self.source.device.mute = True
+        self.config.restore(self.source)
+        self.config.restore(self.lockin)
 
     def connectSignals(self):
         self.ui.scan.clicked.connect(self.startScan)
@@ -42,20 +45,14 @@ class QAcousticCamera(QScanner):
 
     @pyqtSlot()
     def saveSettings(self):
-        #self.config.save(self.source)
-        #self.config.save(self.lockin)
+        self.config.save(self.source)
+        # self.config.save(self.lockin)
         super().saveSettings()
-
-    @pyqtSlot()
-    def restoreSettings(self):
-        #self.config.restore(self.source)
-        #self.config.restore(self.lockin)
-        super().restoreSettings()
 
     @pyqtSlot()
     def startScan(self):
         logger.debug('Starting scan')
-        #self.source.device.mute = False
+        self.source.device.mute = False
         self.data = list()
 
     @pyqtSlot(np.ndarray)
@@ -68,7 +65,7 @@ class QAcousticCamera(QScanner):
     @pyqtSlot()
     def finishScan(self):
         logger.debug('Finishing scan')
-        #self.source.device.mute = True
+        self.source.device.mute = True
 
     @pyqtSlot()
     def saveData(self, filename=None):
@@ -90,9 +87,17 @@ class QAcousticCamera(QScanner):
 def main():
     from PyQt5.QtWidgets import QApplication
     import sys
+    from argparse import ArgumentParser
 
-    app = QApplication(sys.argv)
-    camera = QAcousticCamera()
+    parser = ArgumentParser()
+    parser.add_argument('-f', '--fake',
+                        dest='fake', action='store_true',
+                        help='Do not connect to instruments')
+    args, unparsed = parser.parse_known_args()
+    qt_args = sys.argv[:1] + unparsed
+
+    app = QApplication(qt_args)
+    camera = QAcousticCamera(fake=args.fake)
     camera.show()
     sys.exit(app.exec_())
 
