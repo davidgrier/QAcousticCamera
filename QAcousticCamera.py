@@ -1,11 +1,11 @@
 from QPolargraph import QScanner
 from QInstrument.instruments import (QSR830Widget, QDS345Widget)
+from QInstrument.instruments import (QFakeDS345, QFakeSR830)
 from PyQt5.QtCore import pyqtSlot
 from PyQt5.QtWidgets import (QDesktopWidget, QFileDialog)
 import numpy as np
 import logging
 
-from QInstrument.instruments import (QFakeDS345, QFakeSR830)
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ class QAcousticCamera(QScanner):
     def connectSignals(self):
         self.ui.actionSaveData.triggered.connect(self.saveData)
         self.ui.actionSaveDataAs.triggered.connect(self.saveDataAs)
-        self.scanner.dataReady.connect(self.readData)
+        self.scanner.dataReady.connect(self.processData)
 
     @pyqtSlot()
     def saveSettings(self):
@@ -52,13 +52,15 @@ class QAcousticCamera(QScanner):
     def scanStarted(self):
         self.source.device.mute = False
         self.data = list()
+        self.dataPlot.clear()
         super().scanStarted()
 
     @pyqtSlot(np.ndarray)
-    def readData(self, position):
+    def processData(self, position):
         freq, amplitude, phase = self.lockin.device.report()
         self.data.append([*position, amplitude, phase])
-        logger.debug(f'Reading data: {amplitude} {phase}')
+        self.plotDataPoint(position, (phase/360. + 1.) % 1.)
+        logger.debug(f'Acquired data: {amplitude} {phase}')
 
     @pyqtSlot()
     def scanFinished(self):
