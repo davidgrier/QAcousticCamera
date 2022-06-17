@@ -15,7 +15,8 @@ logger.setLevel(logging.WARNING)
 class QAcousticCamera(QScanner):
 
     def __init__(self, *args, fake=False, **kwargs):
-        super().__init__(*args, **kwargs)
+        configdir = '~/.QAcousticCamera'
+        super().__init__(*args, configdir=configdir, **kwargs)
         self.setWindowTitle('QAcousticCamera')
         self.addInstruments(fake)
         self.connectSignals()
