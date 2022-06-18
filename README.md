@@ -5,7 +5,7 @@ lockin detection of the signal from a microphone
 that is scanned across the field of view by an
 Arduino-driven polargraph.
 
-<img src="docs/QAcousticCamera.png" width="400" alt="Acoustic camera interface">
+<img src="docs/QAcousticCamera.png" width="500" alt="Acoustic camera interface">
 
 ## Dependencies
 1. [QPolargraph](https://github.com/davidgrier/QPolargraph/)
