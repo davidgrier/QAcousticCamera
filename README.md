@@ -5,7 +5,7 @@ locked-in detection of the signal from a microphone
 that is scanned across the field of view by an
 Arduino-driven polargraph.
 
-<img src="docs/QAcousticCamera.png" width="500" alt="Acoustic camera interface">
+<img src="docs/QAcousticCamera.png" width="50%" alt="Acoustic camera interface">
 Image Credit: Aashay Pai, NYU
 
 ## Dependencies
