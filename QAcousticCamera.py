@@ -15,7 +15,7 @@ logger.setLevel(logging.WARNING)
 
 class QAcousticCamera(QScanner):
 
-    def __init__(self, *args, fake=False, **kwargs):
+    def __init__(self, *args, fake=False, data=None, **kwargs):
         configdir = '~/.QAcousticCamera'
         super().__init__(*args, configdir=configdir, **kwargs)
         self.setWindowTitle('QAcousticCamera')
@@ -23,6 +23,7 @@ class QAcousticCamera(QScanner):
         self.connectSignals()
         self.adjustSize()
         self.data = list()
+        self.loadData(data)
 
     def adjustSize(self):
         self.resize(QDesktopWidget().availableGeometry(self).size() * 0.8)
@@ -57,13 +58,16 @@ class QAcousticCamera(QScanner):
         self.dataPlot.clear()
         super().scanStarted()
 
+    def hue(self, phase):
+        return [(p/360. + 1.) % 1 for p in np.atleast_1d(phase)]
+
     @pyqtSlot(np.ndarray)
     def processData(self, position):
         if not self.scanner.scanning():
             return
         freq, amplitude, phase = self.lockin.device.report()
         self.data.append([*position, amplitude, phase])
-        self.plotDataPoint(position, (phase/360. + 1.) % 1.)
+        self.plotData(*position, self.hue(phase))
         logger.debug(f'Acquired data: {amplitude} {phase}')
 
     @pyqtSlot()
@@ -90,6 +94,18 @@ class QAcousticCamera(QScanner):
             self.metadata().to_hdf(filename, 'metadata', 'a')
         self.showStatus(f'Data saved to {filename}')
 
+    @pyqtSlot(str)
+    def loadData(self, filename):
+        if filename is None:
+            return
+        self.dataPlot.clear()
+        df = pd.read_csv(filename)
+        x = df.x.to_numpy()
+        y = df.y.to_numpy()
+        phase = df.phase.to_numpy()
+        self.plotData(x, y, self.hue(phase))
+        self.showStatus(f'Loaded {filename}')
+
     @pyqtSlot()
     def saveDataAs(self):
         dialog = QFileDialog.getSaveFileName
@@ -111,11 +127,12 @@ def main():
     parser.add_argument('-f', '--fake',
                         dest='fake', action='store_true',
                         help='Do not connect to instruments')
+    parser.add_argument('-r', '--read', dest='data', help='Read data file')
     args, unparsed = parser.parse_known_args()
     qt_args = sys.argv[:1] + unparsed
 
     app = QApplication(qt_args)
-    camera = QAcousticCamera(fake=args.fake)
+    camera = QAcousticCamera(fake=args.fake, data=args.data)
     camera.show()
     sys.exit(app.exec_())
 
