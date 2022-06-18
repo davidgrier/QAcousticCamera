@@ -10,3 +10,9 @@ Arduino-driven polargraph.
 2. [QInstrument](https://github.com/davidgrier/QInstrument/)
 3. [pyqtgraph](https://pyqtgraph.org/)
 4. [PyQt5](https://pypi.org/project/PyQt5/)
+
+## Acknowledgements
+
+Work on this project at New York University is supported by
+the National Science Foundation of the United States under
+award number DMR-2104837.
