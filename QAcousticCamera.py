@@ -58,6 +58,8 @@ class QAcousticCamera(QScanner):
 
     @pyqtSlot(np.ndarray)
     def processData(self, position):
+        if not self.scanner.scanning():
+            return
         freq, amplitude, phase = self.lockin.device.report()
         self.data.append([*position, amplitude, phase])
         self.plotDataPoint(position, (phase/360. + 1.) % 1.)
@@ -72,7 +74,7 @@ class QAcousticCamera(QScanner):
     def saveData(self, filename=None):
         filename = filename or self.config.filename('acam', '.csv')
         np.savetxt(filename, np.array(self.data), delimiter=',')
-        self.statusBar().showMessage(f'Data saved to {filename}')
+        self.showStatus(f'Data saved to {filename}')
 
     @pyqtSlot()
     def saveDataAs(self):
@@ -82,7 +84,7 @@ class QAcousticCamera(QScanner):
         if filename:
             self.saveData(filename)
         else:
-            self.statusBar().showMessage('No file selected: Data not saved')
+            self.showStatus('No file selected: Data not saved')
 
 
 def main():
