@@ -23,7 +23,7 @@ class QAcousticCamera(QScanner):
         self.connectSignals()
         self.adjustSize()
         self.data = list()
-        self.loadData(data)
+        self.readData(data)
 
     def adjustSize(self):
         self.resize(QDesktopWidget().availableGeometry(self).size() * 0.8)
@@ -43,6 +43,7 @@ class QAcousticCamera(QScanner):
     def connectSignals(self):
         self.ui.actionSaveData.triggered.connect(self.saveData)
         self.ui.actionSaveDataAs.triggered.connect(self.saveDataAs)
+        self.ui.actionLoadData.triggered.connect(self.loadData)
         self.scanner.dataReady.connect(self.processData)
 
     @pyqtSlot()
@@ -94,18 +95,6 @@ class QAcousticCamera(QScanner):
             self.metadata().to_hdf(filename, 'metadata', 'a')
         self.showStatus(f'Data saved to {filename}')
 
-    @pyqtSlot(str)
-    def loadData(self, filename):
-        if filename is None:
-            return
-        self.dataPlot.clear()
-        df = pd.read_csv(filename)
-        x = df.x.to_numpy()
-        y = df.y.to_numpy()
-        phase = df.phase.to_numpy()
-        self.plotData(x, y, self.hue(phase))
-        self.showStatus(f'Loaded {filename}')
-
     @pyqtSlot()
     def saveDataAs(self):
         dialog = QFileDialog.getSaveFileName
@@ -116,6 +105,27 @@ class QAcousticCamera(QScanner):
             self.saveData(filename)
         else:
             self.showStatus('No file selected: Data not saved')
+
+    def readData(self, filename):
+        if filename is None:
+            return
+        self.dataPlot.clear()
+        if '.csv' in filename:
+            df = pd.read_csv(filename)
+        else:
+            df = pd.read_hdf(filename, 'data')
+        x = df.x.to_numpy()
+        y = df.y.to_numpy()
+        phase = df.phase.to_numpy()
+        self.plotData(x, y, self.hue(phase))
+        self.showStatus(f'Loaded {filename}')
+
+    @pyqtSlot()
+    def loadData(self):
+        dialog = QFileDialog.getOpenFileName
+        filename, _ = dialog(self, 'Load Data', self.config.datadir,
+                             'CSV (*.csv);;data/metadata (*.h5)')
+        self.readData(filename)
 
 
 def main():
