@@ -4,6 +4,7 @@ from QInstrument.instruments import (QFakeDS345, QFakeSR830)
 from PyQt5.QtCore import pyqtSlot
 from PyQt5.QtWidgets import (QDesktopWidget, QFileDialog)
 import numpy as np
+import pandas as pd
 import logging
 
 
@@ -70,17 +71,31 @@ class QAcousticCamera(QScanner):
         super().scanFinished()
         self.source.device.mute = True
 
+    def metadata(self):
+        md = dict(polargraph=self.ui.polargraph.settings,
+                  scanner=self.ui.scanner.settings,
+                  source=self.source.settings,
+                  lockin=self.lockin.settings)
+        return pd.DataFrame(md)
+
     @pyqtSlot()
     def saveData(self, filename=None):
+        columns = ['x', 'y', 'amplitude', 'phase']
+        df = pd.DataFrame(np.array(self.data), columns=columns)
         filename = filename or self.config.filename('acam', '.csv')
-        np.savetxt(filename, np.array(self.data), delimiter=',')
+        if '.csv' in filename:
+            df.to_csv(filename, index=False)
+        else:
+            df.to_hdf(filename, 'data', 'w', index=False)
+            self.metadata().to_hdf(filename, 'metadata', 'a')
         self.showStatus(f'Data saved to {filename}')
 
     @pyqtSlot()
     def saveDataAs(self):
         dialog = QFileDialog.getSaveFileName
         default = self.config.filename('acam', '.csv')
-        filename, _ = dialog(self, 'Save Data', default, 'CSV (*.csv)')
+        filename, _ = dialog(self, 'Save Data', default,
+                             'CSV (*.csv);;data/metadata (*.h5)')
         if filename:
             self.saveData(filename)
         else:
