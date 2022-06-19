@@ -3,7 +3,7 @@
 Scanning holographic acoustic camera based on 
 locked-in detection of the signal from a microphone
 that is scanned across the field of view by an
-Arduino-driven polargraph. This illustration of the GUI
+Arduino-driven polargraph. This illustration of the software
 interface shows the phase of a 5 kHz sound wave from a stereo
 speaker, including reflections from nearby surfaces.
 
