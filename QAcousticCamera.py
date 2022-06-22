@@ -5,6 +5,7 @@ from PyQt5.QtCore import pyqtSlot
 from PyQt5.QtWidgets import (QDesktopWidget, QFileDialog)
 import numpy as np
 import pandas as pd
+from scipy.interpolate import griddata
 import logging
 
 
@@ -76,6 +77,10 @@ class QAcousticCamera(QScanner):
         super().scanFinished()
         self.source.device.mute = True
 
+    def dataframe(self):
+        columns = ['x', 'y', 'amplitude', 'phase']
+        return pd.DataFrame(np.array(self.data), columns=columns)
+
     def metadata(self):
         md = dict(polargraph=self.ui.polargraph.settings,
                   scanner=self.ui.scanner.settings,
@@ -85,13 +90,11 @@ class QAcousticCamera(QScanner):
 
     @pyqtSlot()
     def saveData(self, filename=None):
-        columns = ['x', 'y', 'amplitude', 'phase']
-        df = pd.DataFrame(np.array(self.data), columns=columns)
         filename = filename or self.config.filename('acam', '.csv')
         if '.csv' in filename:
-            df.to_csv(filename, index=False)
+            self.dataframe().to_csv(filename, index=False)
         else:
-            df.to_hdf(filename, 'data', 'w', index=False)
+            self.dataframe().to_hdf(filename, 'data', 'w', index=False)
             self.metadata().to_hdf(filename, 'metadata', 'a')
         self.showStatus(f'Data saved to {filename}')
 
@@ -126,6 +129,16 @@ class QAcousticCamera(QScanner):
         filename, _ = dialog(self, 'Load Data', self.config.datadir,
                              'CSV (*.csv);;data/metadata (*.h5)')
         self.readData(filename)
+
+    @pyqtSlot()
+    def interpolate(self):
+        df = self.dataframe()
+        xy = df[['y', 'x']].to_numpy()
+        x0, y0, x1, y1 = self.scanner.rect
+        resolution = self.scanner.step*1e-3
+        grid = np.mgrid[y0:y1:resolution, x0:x1:resolution].T
+        signal = df.amplitude * np.exp(1.j * np.radians(df.phase))
+        return griddata(xy, signal, grid, fill_value=np.mean(signal))
 
 
 def main():
