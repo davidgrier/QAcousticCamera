@@ -1,5 +1,7 @@
 # QAcousticCamera
 
+[![DOI](https://zenodo.org/badge/500982381.svg)](https://zenodo.org/doi/10.5281/zenodo.13822359)
+
 Scanning holographic acoustic camera based on 
 locked-in detection of the signal from a microphone
 that is scanned across the field of view by an
