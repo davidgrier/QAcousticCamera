@@ -1,6 +1,7 @@
+from pathlib import Path
 from QPolargraph import QScanner
 from QInstrument.instruments import QDS345Widget, QFakeDS345, QSR830Widget, QFakeSR830
-from qtpy import QtCore, QtWidgets
+from qtpy import QtCore, QtGui, QtWidgets
 import numpy as np
 import pandas as pd
 from scipy.interpolate import griddata
@@ -36,6 +37,9 @@ class QAcousticCamera(QScanner):
         configdir = '~/.QAcousticCamera'
         super().__init__(*args, fake=fake, configdir=configdir, **kwargs)
         self.setWindowTitle('QAcousticCamera')
+        icon_path = Path(__file__).parent / 'docs' / 'icon.png'
+        if icon_path.exists():
+            self.setWindowIcon(QtGui.QIcon(str(icon_path)))
         self.addInstruments(fake)
         self.connectSignals()
         self.adjustSize()
@@ -44,12 +48,11 @@ class QAcousticCamera(QScanner):
 
     def adjustSize(self) -> None:
         '''Resize the window to 80% of the available screen area.'''
-        geom = QtWidgets.QApplication.primaryScreen().availableGeometry()
-        w = int(geom.width() * 0.8)
-        h = int(geom.height() * 0.8)
-        self.resize(w, h)
-        width = 512
-        self.splitter.setSizes([width, width])
+        screen = QtWidgets.QApplication.primaryScreen()
+        if screen is not None:
+            geom = screen.availableGeometry()
+            self.resize(int(geom.width() * 0.8), int(geom.height() * 0.8))
+        self.splitter.setSizes([512, 512])
 
     def addInstruments(self, fake: bool) -> None:
         '''Create and register instrument widgets.

@@ -51,7 +51,7 @@ package-dir = {"QAcousticCamera" = "."}
 packages = ["QAcousticCamera"]
 
 [tool.setuptools.package-data]
-"QAcousticCamera" = ["docs/*.csv", "docs/*.png"]
+"QAcousticCamera" = ["docs/*.csv", "docs/*.png", "docs/*.icns"]
 
 [tool.setuptools.exclude-package-data]
 "QAcousticCamera" = [".qa/**", "tests/**"]
