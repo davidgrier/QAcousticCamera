@@ -18,13 +18,12 @@ Image Credit: Aashay Pai, NYU
 ## Installation
 
 ```bash
-pip install -r requirements.txt
+pip install QAcousticCamera
 ```
 
-The following packages must be installed separately:
-
-- [QPolargraph](https://github.com/davidgrier/QPolargraph/): polargraph scanner control
-- [QInstrument](https://github.com/davidgrier/QInstrument/): Qt-based instrument widgets
+All dependencies, including [QInstrument](https://github.com/davidgrier/QInstrument/) and
+[QPolargraph](https://github.com/davidgrier/QPolargraph/), are installed automatically.
+A Qt binding such as [PyQt6](https://pypi.org/project/PyQt6/) must also be present.
 
 ## Usage
 
