@@ -1,6 +1,6 @@
 # QAcousticCamera
 
-[![PyPI version](https://img.shields.io/pypi/v/QAcousticCamera)](https://pypi.org/project/QAcousticCamera/)
+[![PyPI version](https://img.shields.io/pypi/v/qacousticcamera)](https://pypi.org/project/QAcousticCamera/)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.13822360.svg)](https://doi.org/10.5281/zenodo.13822360)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE.md)
 
