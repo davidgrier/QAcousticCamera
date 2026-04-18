@@ -36,16 +36,21 @@ class QAcousticCamera(QScanner):
                  **kwargs) -> None:
         configdir = '~/.QAcousticCamera'
         super().__init__(*args, fake=fake, configdir=configdir, **kwargs)
+        self._setupUi()
+        self._addInstruments(fake)
+        self._connectSignals()
+        self.adjustSize()
+        self.data: list[list[float]] = []
+        field = self._loadDemoField() if fake else None
+        self._field: LinearNDInterpolator | None = field
+        self.readData(data)
+
+    def _setupUi(self) -> None:
+        '''Set up the UI layout with a data plot and controls.'''
         self.setWindowTitle('QAcousticCamera')
         icon_path = Path(__file__).parent / 'docs' / 'icon.png'
         if icon_path.exists():
             self.setWindowIcon(QtGui.QIcon(str(icon_path)))
-        self.addInstruments(fake)
-        self.connectSignals()
-        self.adjustSize()
-        self.data: list[list[float]] = []
-        self._field: LinearNDInterpolator | None = self._loadDemoField() if fake else None
-        self.readData(data)
 
     def adjustSize(self) -> None:
         '''Resize the window to 80% of the available screen area.'''
@@ -55,7 +60,7 @@ class QAcousticCamera(QScanner):
             self.resize(int(geom.width() * 0.8), int(geom.height() * 0.8))
         self.splitter.setSizes([512, 512])
 
-    def addInstruments(self, fake: bool) -> None:
+    def _addInstruments(self, fake: bool) -> None:
         '''Create and register instrument widgets.
 
         Parameters
@@ -72,8 +77,9 @@ class QAcousticCamera(QScanner):
         self.config.restore(self.source)
         self.config.restore(self.lockin)
 
-    def connectSignals(self) -> None:
+    def _connectSignals(self) -> None:
         '''Connect UI actions and scanner signals to their slots.'''
+        super()._connectSignals()
         self.actionSaveData.triggered.connect(self.saveData)
         self.actionSaveDataAs.triggered.connect(self.saveDataAs)
         self.actionLoadData.triggered.connect(self.loadData)
@@ -127,7 +133,9 @@ class QAcousticCamera(QScanner):
             return None
         df = pd.read_csv(path)
         xy = df[['x', 'y']].to_numpy()
-        signal = df['amp'].to_numpy() * np.exp(1j * np.radians(df['phase'].to_numpy()))
+        amplitude = df['amp'].to_numpy()
+        phase = df['phase'].to_numpy()
+        signal = amplitude * np.exp(1j * np.radians(phase))
         return LinearNDInterpolator(xy, signal, fill_value=0.)
 
     @QtCore.Slot(dict)
@@ -236,6 +244,7 @@ class QAcousticCamera(QScanner):
             df = pd.read_csv(filename)
         else:
             df = pd.read_hdf(filename, 'data')
+        self.data = df[['x', 'y', 'amplitude', 'phase']].to_numpy().tolist()
         x = df.x.to_numpy()
         y = df.y.to_numpy()
         phase = df.phase.to_numpy()
