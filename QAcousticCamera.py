@@ -4,7 +4,7 @@ from QInstrument.instruments import QDS345Widget, QFakeDS345, QSR830Widget, QFak
 from qtpy import QtCore, QtGui, QtWidgets
 import numpy as np
 import pandas as pd
-from scipy.interpolate import griddata
+from scipy.interpolate import griddata, LinearNDInterpolator
 import logging
 
 
@@ -44,6 +44,7 @@ class QAcousticCamera(QScanner):
         self.connectSignals()
         self.adjustSize()
         self.data: list[list[float]] = []
+        self._field: LinearNDInterpolator | None = self._loadDemoField() if fake else None
         self.readData(data)
 
     def adjustSize(self) -> None:
@@ -108,13 +109,35 @@ class QAcousticCamera(QScanner):
         '''
         return [(p / 360. + 1.) % 1 for p in np.atleast_1d(phase)]
 
+    def _loadDemoField(self) -> LinearNDInterpolator | None:
+        '''Build a complex-signal interpolator from the demo data file.
+
+        Interpolates ``amplitude * exp(i * phase)`` over the (x, y)
+        positions in ``docs/demo.csv``.  Returns ``None`` if the file
+        is not found.
+
+        Returns
+        -------
+        LinearNDInterpolator or None
+            Interpolator mapping (x, y) → complex signal, or ``None``.
+        '''
+        path = Path(__file__).parent / 'docs' / 'demo.csv'
+        if not path.exists():
+            logger.warning(f'Demo field not found: {path}')
+            return None
+        df = pd.read_csv(path)
+        xy = df[['x', 'y']].to_numpy()
+        signal = df['amp'].to_numpy() * np.exp(1j * np.radians(df['phase'].to_numpy()))
+        return LinearNDInterpolator(xy, signal, fill_value=0.)
+
     @QtCore.Slot(dict)
     def processData(self, position: dict) -> None:
         '''Record amplitude and phase at the current scan position.
 
-        Reads from the lock-in amplifier and appends
-        ``[x, y, amplitude, phase]`` to ``self.data``, then updates
-        the scatter plot. No-op if the scanner is not actively scanning.
+        In fake mode, interpolates amplitude and phase from the demo
+        field rather than reading from hardware.  Appends
+        ``[x, y, amplitude, phase]`` to ``self.data`` and updates the
+        scatter plot.  No-op if the scanner is not actively scanning.
 
         Parameters
         ----------
@@ -124,7 +147,12 @@ class QAcousticCamera(QScanner):
         if not self.scanner.pattern.scanning():
             return
         x, y = position['x'], position['y']
-        freq, amplitude, phase = self.lockin.device.report()
+        if self._field is not None:
+            signal = self._field([[x, y]])[0]
+            amplitude = float(np.abs(signal))
+            phase = float(np.degrees(np.angle(signal)))
+        else:
+            freq, amplitude, phase = self.lockin.device.report()
         self.data.append([x, y, amplitude, phase])
         self.plotData(x, y, self.hue(phase))
         logger.debug(f'Acquired data: {amplitude} {phase}')
