@@ -36,7 +36,7 @@ jobs:
             libfreetype6
 
       - name: Install Python dependencies
-        run: pip install PyQt6 qtpy numpy pandas scipy pyqtgraph QInstrument QPolargraph pytest pytest-qt
+        run: pip install PyQt6 qtpy numpy pandas scipy pyqtgraph "QInstrument>=2.3.2" QPolargraph pytest pytest-qt
 
       - name: Run tests
         run: pytest tests/
