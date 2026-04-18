@@ -167,9 +167,27 @@ class QAcousticCamera(QScanner):
 
     @QtCore.Slot()
     def scanFinished(self) -> None:
-        '''Mute the signal source when the scan completes.'''
+        '''Mute the source and redraw data with amplitude encoding.'''
         super().scanFinished()
         self.source.device.mute = True
+        self.redrawData()
+
+    def redrawData(self) -> None:
+        '''Redraw the scatter plot with amplitude encoded as brightness.
+
+        Normalizes amplitude across all accumulated data points and
+        repaints using HSV color: hue encodes phase, value (brightness)
+        encodes relative amplitude.  No-op if no data has been collected.
+        '''
+        df = self.dataframe()
+        if df.empty:
+            return
+        amplitude = df.amplitude.to_numpy()
+        amax = amplitude.max()
+        value = amplitude / amax if amax > 0 else np.ones_like(amplitude)
+        self.dataPlot.clear()
+        self.plotData(df.x.to_numpy(), df.y.to_numpy(),
+                      self.hue(df.phase.to_numpy()), value)
 
     def dataframe(self) -> pd.DataFrame:
         '''Return the current scan data as a DataFrame.
@@ -245,10 +263,7 @@ class QAcousticCamera(QScanner):
         else:
             df = pd.read_hdf(filename, 'data')
         self.data = df[['x', 'y', 'amplitude', 'phase']].to_numpy().tolist()
-        x = df.x.to_numpy()
-        y = df.y.to_numpy()
-        phase = df.phase.to_numpy()
-        self.plotData(x, y, self.hue(phase))
+        self.redrawData()
         self.showStatus(f'Loaded {filename}')
 
     @QtCore.Slot()
