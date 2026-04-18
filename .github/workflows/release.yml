@@ -1,0 +1,93 @@
+name: Build release packages
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            artifact: QAcousticCamera-macOS.zip
+          - os: ubuntu-22.04
+            artifact: QAcousticCamera-Linux.zip
+          - os: windows-latest
+            artifact: QAcousticCamera-Windows.zip
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libegl1 libgl1 libglib2.0-0 libdbus-1-3 \
+            libxkbcommon0 libfontconfig1 libfreetype6 \
+            libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 \
+            libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 \
+            libxkbcommon-x11-0
+
+      - name: Install Python dependencies
+        run: >
+          pip install
+          PyQt6 qtpy numpy pandas scipy pyqtgraph
+          "QInstrument>=2.3.2" "QPolargraph>=1.1.2"
+          pyinstaller
+
+      - name: Build with PyInstaller
+        run: pyinstaller QAcousticCamera.spec
+
+      - name: Package macOS app
+        if: runner.os == 'macOS'
+        run: |
+          cd dist
+          zip -r ../QAcousticCamera-macOS.zip QAcousticCamera.app
+
+      - name: Package Linux build
+        if: runner.os == 'Linux'
+        run: |
+          cd dist
+          zip -r ../QAcousticCamera-Linux.zip QAcousticCamera
+
+      - name: Package Windows build
+        if: runner.os == 'Windows'
+        run: |
+          cd dist
+          Compress-Archive -Path QAcousticCamera -DestinationPath ..\QAcousticCamera-Windows.zip
+        shell: pwsh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            QAcousticCamera-macOS.zip
+            QAcousticCamera-Linux.zip
+            QAcousticCamera-Windows.zip
