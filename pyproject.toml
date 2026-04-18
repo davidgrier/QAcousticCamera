@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "QAcousticCamera"
+version = "1.1.0"
+description = "Scanning holographic acoustic camera"
+readme = "README.md"
+license = { file = "LICENSE.md" }
+authors = [
+    { name = "David G. Grier", email = "david.grier@nyu.edu" },
+]
+keywords = ["acoustic camera", "holography", "Qt", "scientific instruments"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.20",
+    "pandas>=1.4",
+    "pyqtgraph>=0.13",
+    "qtpy>=2.0",
+    "scipy>=1.8",
+    "QInstrument>=2.3",
+    "QPolargraph",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-qt>=4.0",
+]
+
+[project.gui-scripts]
+qacousticcamera = "QAcousticCamera.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/davidgrier/QAcousticCamera"
+Repository = "https://github.com/davidgrier/QAcousticCamera"
+"Issue Tracker" = "https://github.com/davidgrier/QAcousticCamera/issues"
+
+[tool.setuptools]
+package-dir = {"QAcousticCamera" = "."}
+packages = ["QAcousticCamera"]
+
+[tool.setuptools.package-data]
+"QAcousticCamera" = ["docs/*.csv", "docs/*.png"]
+
+[tool.setuptools.exclude-package-data]
+"QAcousticCamera" = [".qa/**", "tests/**"]

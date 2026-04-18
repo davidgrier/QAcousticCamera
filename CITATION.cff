@@ -1,0 +1,46 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below."
+title: "QAcousticCamera"
+version: "1.1.0"
+doi: 10.5281/zenodo.13822360
+date-released: "2026-04-18"
+authors:
+  - family-names: Grier
+    given-names: David G.
+    affiliation: New York University
+    orcid: https://orcid.org/0000-0002-4382-5139
+license: GPL-3.0
+repository-code: "https://github.com/davidgrier/QAcousticCamera"
+abstract: >
+  A scanning holographic acoustic camera that uses a polargraph to
+  move a microphone across the field of view while a lock-in amplifier
+  measures the amplitude and phase of the acoustic signal. Phase-encoded
+  color scatter plots and gridded interpolation provide real-time and
+  post-processed holographic maps of the sound field.
+keywords:
+  - acoustic camera
+  - holography
+  - lock-in amplifier
+  - polargraph
+  - Qt
+  - scientific instrument
+references:
+  - type: article
+    authors:
+      - family-names: Gao
+        given-names: H. W.
+      - family-names: Mishra
+        given-names: K. I.
+      - family-names: Winters
+        given-names: A.
+      - family-names: Wolin
+        given-names: S.
+      - family-names: Grier
+        given-names: David G.
+    title: "Flexible wide-field high-resolution scanning camera for continuous-wave acoustic holography"
+    journal: "Review of Scientific Instruments"
+    volume: 89
+    issue: 11
+    start: 114901
+    year: 2018
+    doi: 10.1063/1.5052380
