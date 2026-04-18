@@ -29,7 +29,7 @@ dependencies = [
     "qtpy>=2.0",
     "scipy>=1.8",
     "QInstrument>=2.3.2",
-    "QPolargraph>=1.1.7",
+    "QPolargraph>=1.2.0",
 ]
 
 [project.optional-dependencies]
