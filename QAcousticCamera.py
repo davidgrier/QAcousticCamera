@@ -173,21 +173,22 @@ class QAcousticCamera(QScanner):
         self.redrawData()
 
     def redrawData(self) -> None:
-        '''Redraw the scatter plot with amplitude encoded as brightness.
+        '''Redraw the scatter plot with amplitude encoded as saturation.
 
         Normalizes amplitude across all accumulated data points and
-        repaints using HSV color: hue encodes phase, value (brightness)
-        encodes relative amplitude.  No-op if no data has been collected.
+        repaints using HSV color: hue encodes phase, saturation encodes
+        relative amplitude.  Loud areas appear as pure hue; quiet areas
+        appear white.  No-op if no data has been collected.
         '''
         df = self.dataframe()
         if df.empty:
             return
         amplitude = df.amplitude.to_numpy()
         amax = amplitude.max()
-        value = amplitude / amax if amax > 0 else np.ones_like(amplitude)
+        saturation = amplitude / amax if amax > 0 else np.ones_like(amplitude)
         self.dataPlot.clear()
         self.plotData(df.x.to_numpy(), df.y.to_numpy(),
-                      self.hue(df.phase.to_numpy()), value)
+                      self.hue(df.phase.to_numpy()), saturation)
 
     def dataframe(self) -> pd.DataFrame:
         '''Return the current scan data as a DataFrame.
