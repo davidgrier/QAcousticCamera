@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
-        python-version: ['3.10', '3.11', '3.12']
+        python-version: ['3.11', '3.12']
 
     steps:
       - uses: actions/checkout@v4
@@ -36,7 +36,7 @@ jobs:
             libfreetype6
 
       - name: Install Python dependencies
-        run: pip install PyQt6 qtpy numpy pandas scipy pyqtgraph "QInstrument>=2.3.2" QPolargraph pytest pytest-qt
+        run: pip install PyQt6 qtpy numpy pandas scipy pyqtgraph "git+https://github.com/davidgrier/QInstrument.git" QPolargraph pytest pytest-qt
 
       - name: Run tests
         run: pytest tests/
