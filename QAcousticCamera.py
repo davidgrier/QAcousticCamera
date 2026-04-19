@@ -38,7 +38,6 @@ class QAcousticCamera(QScanner):
         super().__init__(*args, fake=fake, configdir=configdir, **kwargs)
         self._setupUi()
         self._addInstruments(fake)
-        self._connectSignals()
         self.adjustSize()
         self.data: list[list[float]] = []
         field = self._loadDemoField() if fake else None
@@ -58,7 +57,6 @@ class QAcousticCamera(QScanner):
         if screen is not None:
             geom = screen.availableGeometry()
             self.resize(int(geom.width() * 0.8), int(geom.height() * 0.8))
-        self.splitter.setSizes([512, 512])
 
     def _addInstruments(self, fake: bool) -> None:
         '''Create and register instrument widgets.
