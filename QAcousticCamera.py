@@ -75,13 +75,14 @@ class QAcousticCamera(QScanner):
         self.config.restore(self.source)
         self.config.restore(self.lockin)
 
+    _SCAN_LOCKED = QScanner._SCAN_LOCKED + ('source', 'lockin')
+
     def _connectSignals(self) -> None:
         '''Connect UI actions and scanner signals to their slots.'''
         super()._connectSignals()
         self.actionSaveData.triggered.connect(self.saveData)
         self.actionSaveDataAs.triggered.connect(self.saveDataAs)
         self.actionLoadData.triggered.connect(self.loadData)
-        self.dataReady.connect(self.processData)
 
     @QtCore.Slot()
     def saveSettings(self) -> None:
@@ -136,23 +137,21 @@ class QAcousticCamera(QScanner):
         signal = amplitude * np.exp(1j * np.radians(phase))
         return LinearNDInterpolator(xy, signal, fill_value=0.)
 
-    @QtCore.Slot(dict)
-    def processData(self, position: dict) -> None:
-        '''Record amplitude and phase at the current scan position.
+    @QtCore.Slot(object)
+    def _onDataReady(self, pos: np.ndarray) -> None:
+        '''Acquire a measurement at pos and emit the full data dict.
 
-        In fake mode, interpolates amplitude and phase from the demo
-        field rather than reading from hardware.  Appends
-        ``[x, y, amplitude, phase]`` to ``self.data`` and updates the
-        scatter plot.  No-op if the scanner is not actively scanning.
+        Overrides :meth:`QScanner._onDataReady` to merge amplitude and
+        phase from the lock-in amplifier (or demo field in fake mode)
+        into the emitted :attr:`dataReady` signal.
 
         Parameters
         ----------
-        position : dict
-            Current position from the scanner with keys ``'x'`` and ``'y'``.
+        pos : np.ndarray
+            Current position ``[x, y]`` [m] from the scan pattern.
         '''
-        if not self.scanner.pattern.scanning():
-            return
-        x, y = position['x'], position['y']
+        self._latestPosition = pos
+        x, y = float(pos[0]), float(pos[1])
         if self._field is not None:
             signal = self._field([[x, y]])[0]
             amplitude = float(np.abs(signal))
@@ -162,6 +161,8 @@ class QAcousticCamera(QScanner):
         self.data.append([x, y, amplitude, phase])
         self.plotData(x, y, self.hue(phase))
         logger.debug(f'Acquired data: {amplitude} {phase}')
+        self.dataReady.emit({'x': x, 'y': y,
+                             'amplitude': amplitude, 'phase': phase})
 
     @QtCore.Slot()
     def scanFinished(self) -> None:
