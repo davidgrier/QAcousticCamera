@@ -11,7 +11,7 @@ Arduino-driven polargraph. This illustration of the software
 interface shows the phase of a 5 kHz sound wave from a stereo
 speaker, including reflections from nearby surfaces.
 
-<img src="docs/QAcousticCamera.png" width="75%" alt="Acoustic camera interface">
+<img src="https://raw.githubusercontent.com/davidgrier/QAcousticCamera/main/docs/QAcousticCamera.png" width="75%" alt="Acoustic camera interface">
 
 Image Credit: Aashay Pai, NYU
 
