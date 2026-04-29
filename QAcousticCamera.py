@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+import collections
+import time
 from pathlib import Path
 from QPolargraph import QScanner
 from QInstrument.instruments import QDS345Widget, QFakeDS345, QSR830Widget, QFakeSR830
@@ -11,6 +15,122 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+class SR830Worker(QtCore.QObject):
+    '''Background worker that reads SR830 and correlates readings with position.
+
+    Runs ``report()`` in a tight loop on a dedicated thread. Each reading is
+    time-stamped and paired with a linearly-interpolated position from a
+    shared position buffer maintained by the main-thread scan loop.
+
+    The position buffer holds ``(timestamp, x, y)`` tuples written by the
+    main thread each time the polargraph emits a position update.  For each
+    SR830 reading at time ``t_s``, the worker finds the nearest buffer entries
+    before and after ``t_s`` and interpolates:
+
+    .. code-block:: text
+
+        α = (t_s − t_before) / (t_after − t_before)
+        x = x_before + α · (x_after − x_before)
+        y = y_before + α · (y_after − y_before)
+
+    Readings that arrive before any trailing bracket is available are held in
+    a pending list and resolved on the next iteration.  Any still-pending
+    readings are flushed using the nearest available position when ``stop()``
+    is called.
+
+    Parameters
+    ----------
+    lockin : QSR830
+        SR830 instrument instance.  ``report()`` is called directly; the
+        caller must ensure no other thread accesses the device concurrently.
+    position_buffer : collections.deque
+        Shared deque of ``(timestamp, x, y)`` tuples.  Written by the main
+        thread, read here.  Python's deque is safe for single-writer /
+        single-reader access under the GIL.
+
+    Signals
+    -------
+    dataReady(dict)
+        Emitted for each resolved SR830 reading.
+        Keys: ``'x'``, ``'y'``, ``'amplitude'``, ``'phase'``.
+    '''
+
+    dataReady = QtCore.Signal(dict)
+
+    def __init__(self, lockin: object,
+                 position_buffer: collections.deque) -> None:
+        super().__init__()
+        self._lockin = lockin
+        self._buffer = position_buffer
+        self._running = False
+
+    @QtCore.Slot()
+    def run(self) -> None:
+        '''Read SR830 continuously and emit interpolated measurements.
+
+        Blocks until :meth:`stop` is called.  Pending readings that are
+        still waiting for a trailing position bracket are flushed at the
+        end of the run using the nearest available position.
+        '''
+        self._running = True
+        pending: list[tuple[float, float, float]] = []
+        while self._running:
+            t_s = time.perf_counter()
+            _, amplitude, phase = self._lockin.report()
+            pending.append((t_s, amplitude, phase))
+            self._flush(pending)
+        self._flush(pending, final=True)
+
+    @QtCore.Slot()
+    def stop(self) -> None:
+        '''Signal the run loop to exit after the current report() completes.'''
+        self._running = False
+
+    def _flush(self, pending: list[tuple[float, float, float]],
+               final: bool = False) -> None:
+        '''Resolve pending SR830 readings against the position buffer.
+
+        For each pending reading, searches the position buffer for a sample
+        before and after the SR830 timestamp.  If both are found, the
+        position is linearly interpolated and :attr:`dataReady` is emitted.
+        Readings without a trailing bracket remain pending unless
+        ``final=True``, in which case the nearest available position is used.
+
+        Parameters
+        ----------
+        pending : list of (float, float, float)
+            ``(timestamp, amplitude, phase)`` tuples, modified in place.
+            Resolved entries are removed.
+        final : bool, optional
+            If ``True``, resolve all remaining readings using the nearest
+            available position rather than waiting for a trailing bracket.
+            Default: ``False``.
+        '''
+        snapshot = list(self._buffer)
+        resolved = []
+        for t_s, amplitude, phase in pending:
+            before = [(t, x, y) for t, x, y in snapshot if t <= t_s]
+            after  = [(t, x, y) for t, x, y in snapshot if t  > t_s]
+            if before and after:
+                t0, x0, y0 = before[-1]
+                t1, x1, y1 = after[0]
+                alpha = (t_s - t0) / (t1 - t0) if t1 > t0 else 0.0
+                x = x0 + alpha * (x1 - x0)
+                y = y0 + alpha * (y1 - y0)
+            elif final:
+                candidates = before or after
+                if not candidates:
+                    continue
+                _, x, y = candidates[-1] if before else candidates[0]
+            else:
+                continue
+            resolved.append((t_s, amplitude, phase))
+            self.dataReady.emit({'x': x, 'y': y,
+                                 'amplitude': amplitude, 'phase': phase})
+        for item in resolved:
+            pending.remove(item)
+
+
 class QAcousticCamera(QScanner):
     '''Scanning holographic acoustic camera.
 
@@ -18,6 +138,12 @@ class QAcousticCamera(QScanner):
     generator (tone source) and SR830 lock-in amplifier (detector).
     Each scan position yields amplitude and phase measurements that
     are stored and rendered as a phase-encoded color scatter plot.
+
+    During a scan with real hardware, an :class:`SR830Worker` runs on a
+    dedicated thread, calling ``report()`` as fast as the instrument
+    allows and correlating each reading with an interpolated polargraph
+    position.  In fake mode the demo acoustic field is sampled directly
+    at each polargraph position update instead.
 
     Parameters
     ----------
@@ -42,6 +168,9 @@ class QAcousticCamera(QScanner):
         self.data: list[list[float]] = []
         field = self._loadDemoField() if fake else None
         self._field: LinearNDInterpolator | None = field
+        self._position_buffer: collections.deque | None = None
+        self._sr830_worker: SR830Worker | None = None
+        self._sr830_thread: QtCore.QThread | None = None
         self.readData(data)
 
     def _setupUi(self) -> None:
@@ -93,11 +222,99 @@ class QAcousticCamera(QScanner):
 
     @QtCore.Slot()
     def scanStarted(self) -> None:
-        '''Unmute the signal source and clear data when a scan begins.'''
+        '''Clear data, start SR830 acquisition thread, then begin scanning.
+
+        In real-hardware mode an :class:`SR830Worker` is created and moved
+        to a dedicated thread before the scan loop starts, so SR830 I/O
+        runs concurrently with polargraph motion.  In fake mode the demo
+        field is sampled directly in :meth:`_onDataReady` instead.
+        '''
         self.source.device.mute = False
         self.data = []
         self.dataPlot.clear()
+        if self._field is None:
+            self._position_buffer = collections.deque(maxlen=100)
+            self._sr830_worker = SR830Worker(
+                self.lockin.device, self._position_buffer)
+            self._sr830_thread = QtCore.QThread()
+            self._sr830_worker.moveToThread(self._sr830_thread)
+            self._sr830_thread.started.connect(self._sr830_worker.run)
+            self._sr830_worker.dataReady.connect(self._onAcousticData)
+            self._sr830_thread.start()
         super().scanStarted()
+
+    @QtCore.Slot(object)
+    def _onDataReady(self, pos: np.ndarray) -> None:
+        '''Handle a position update from the scan loop.
+
+        In fake mode, samples the demo acoustic field at ``pos`` and
+        records the result immediately.  In real-hardware mode, pushes a
+        timestamped position entry to the shared buffer for the
+        :class:`SR830Worker` to use for interpolation.
+
+        Parameters
+        ----------
+        pos : np.ndarray
+            Current position ``[x, y]`` [m] from the scan pattern.
+        '''
+        x, y = float(pos[0]), float(pos[1])
+        if self._field is not None:
+            signal = self._field([[x, y]])[0]
+            self._appendData(x, y,
+                             float(np.abs(signal)),
+                             float(np.degrees(np.angle(signal))))
+        elif self._position_buffer is not None:
+            self._position_buffer.append((time.perf_counter(), x, y))
+
+    @QtCore.Slot(dict)
+    def _onAcousticData(self, data: dict) -> None:
+        '''Receive an interpolated measurement from the SR830 worker.
+
+        Parameters
+        ----------
+        data : dict
+            Keys: ``'x'``, ``'y'``, ``'amplitude'``, ``'phase'``.
+        '''
+        self._appendData(data['x'], data['y'],
+                         data['amplitude'], data['phase'])
+
+    def _appendData(self, x: float, y: float,
+                    amplitude: float, phase: float) -> None:
+        '''Record one measurement and update the live plot.
+
+        Parameters
+        ----------
+        x, y : float
+            Position [m].
+        amplitude : float
+            Lock-in amplitude [V].
+        phase : float
+            Lock-in phase [degrees].
+        '''
+        self.data.append([x, y, amplitude, phase])
+        self.plotData(x, y, self.hue(phase))
+        logger.debug(f'data: x={x:.4f} y={y:.4f} amp={amplitude:.4f} '
+                     f'phase={phase:.2f}')
+        self.dataReady.emit({'x': x, 'y': y,
+                             'amplitude': amplitude, 'phase': phase})
+
+    @QtCore.Slot()
+    def scanFinished(self) -> None:
+        '''Stop SR830 acquisition, mute source, and redraw with amplitude.
+
+        Waits up to 2 seconds for the SR830 thread to finish its current
+        ``report()`` call before proceeding, so no readings are lost.
+        '''
+        if self._sr830_worker is not None:
+            self._sr830_worker.stop()
+        if self._sr830_thread is not None:
+            self._sr830_thread.wait(2000)
+            self._sr830_thread = None
+        self._sr830_worker = None
+        self._position_buffer = None
+        super().scanFinished()
+        self.source.device.mute = True
+        self.redrawData()
 
     def hue(self, phase: float | np.ndarray) -> list[float]:
         '''Convert phase angle(s) in degrees to hue values in [0, 1).
@@ -117,10 +334,6 @@ class QAcousticCamera(QScanner):
     def _loadDemoField(self) -> LinearNDInterpolator | None:
         '''Build a complex-signal interpolator from the demo data file.
 
-        Interpolates ``amplitude * exp(i * phase)`` over the (x, y)
-        positions in ``docs/demo.csv``.  Returns ``None`` if the file
-        is not found.
-
         Returns
         -------
         LinearNDInterpolator or None
@@ -136,40 +349,6 @@ class QAcousticCamera(QScanner):
         phase = df['phase'].to_numpy()
         signal = amplitude * np.exp(1j * np.radians(phase))
         return LinearNDInterpolator(xy, signal, fill_value=0.)
-
-    @QtCore.Slot(object)
-    def _onDataReady(self, pos: np.ndarray) -> None:
-        '''Acquire a measurement at pos and emit the full data dict.
-
-        Overrides :meth:`QScanner._onDataReady` to merge amplitude and
-        phase from the lock-in amplifier (or demo field in fake mode)
-        into the emitted :attr:`dataReady` signal.
-
-        Parameters
-        ----------
-        pos : np.ndarray
-            Current position ``[x, y]`` [m] from the scan pattern.
-        '''
-        self._latestPosition = pos
-        x, y = float(pos[0]), float(pos[1])
-        if self._field is not None:
-            signal = self._field([[x, y]])[0]
-            amplitude = float(np.abs(signal))
-            phase = float(np.degrees(np.angle(signal)))
-        else:
-            freq, amplitude, phase = self.lockin.device.report()
-        self.data.append([x, y, amplitude, phase])
-        self.plotData(x, y, self.hue(phase))
-        logger.debug(f'Acquired data: {amplitude} {phase}')
-        self.dataReady.emit({'x': x, 'y': y,
-                             'amplitude': amplitude, 'phase': phase})
-
-    @QtCore.Slot()
-    def scanFinished(self) -> None:
-        '''Mute the source and redraw data with amplitude encoding.'''
-        super().scanFinished()
-        self.source.device.mute = True
-        self.redrawData()
 
     def redrawData(self) -> None:
         '''Redraw the scatter plot with amplitude encoded as saturation.
@@ -277,11 +456,6 @@ class QAcousticCamera(QScanner):
     @QtCore.Slot()
     def interpolate(self) -> np.ndarray:
         '''Resample scattered scan data onto a regular grid.
-
-        Uses ``scipy.griddata`` (linear interpolation) to resample
-        the complex-valued signal (amplitude * exp(i*phase)) from
-        the irregular scatter of scan positions onto a rectangular
-        grid whose resolution and bounds match the scanner settings.
 
         Returns
         -------
