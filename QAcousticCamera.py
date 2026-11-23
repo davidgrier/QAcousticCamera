@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import collections
 import time
+from typing import Any
 from pathlib import Path
 from QPolargraph import QScanner
 from QPolargraph.patterns.QScanPattern import ScanState
@@ -64,7 +65,7 @@ class SR830Worker(QtCore.QObject):
 
     dataReady = QtCore.Signal(dict)
 
-    def __init__(self, lockin: object,
+    def __init__(self, lockin: Any,
                  position_buffer: collections.deque) -> None:
         super().__init__()
         self._lockin = lockin
@@ -195,8 +196,10 @@ class QAcousticCamera(QScanner):
         if icon_path.exists():
             self.setWindowIcon(QtGui.QIcon(str(icon_path)))
         self._addInstruments(self._fake)
-        geom = QtWidgets.QApplication.primaryScreen().availableGeometry()
-        self.resize(int(geom.width() * 0.8), int(geom.height() * 0.8))
+        screen = QtWidgets.QApplication.primaryScreen()
+        if screen is not None:
+            geom = screen.availableGeometry()
+            self.resize(int(geom.width() * 0.8), int(geom.height() * 0.8))
 
     def _addInstruments(self, fake: bool) -> None:
         '''Create and register instrument widgets.
@@ -241,7 +244,7 @@ class QAcousticCamera(QScanner):
         call :meth:`_onScanStarting` when the scan state machine is IDLE
         (i.e. a new scan is being initiated, not a pause or resume).
         '''
-        if not self.scanner.pattern.active() and not self._scan_active:
+        if not self.pattern.active() and not self._scan_active:
             self._onScanStarting()
         super().toggleScan()
 
@@ -463,8 +466,9 @@ class QAcousticCamera(QScanner):
         if '.csv' in filename:
             self.dataframe().to_csv(filename, index=False)
         else:
-            self.dataframe().to_hdf(filename, 'data', 'w', index=False)
-            self.metadata().to_hdf(filename, 'metadata', 'a')
+            self.dataframe().to_hdf(filename, key='data', mode='w',
+                                    index=False)
+            self.metadata().to_hdf(filename, key='metadata', mode='a')
         self.showStatus(f'Data saved to {filename}')
 
     @QtCore.Slot()
@@ -492,7 +496,8 @@ class QAcousticCamera(QScanner):
         if '.csv' in filename:
             df = pd.read_csv(filename)
         else:
-            df = pd.read_hdf(filename, 'data')
+            df = pd.read_hdf(filename, key='data')
+            assert isinstance(df, pd.DataFrame)
         self.data = df[['x', 'y', 'amplitude', 'phase']].to_numpy().tolist()
         self.redrawData()
         self.showStatus(f'Loaded {filename}')
@@ -501,7 +506,7 @@ class QAcousticCamera(QScanner):
     def loadData(self) -> None:
         '''Open a file dialog and load scan data from the chosen file.'''
         filename, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, 'Load Data', self.config.datadir,
+            self, 'Load Data', str(self.config.datadir),
             'CSV (*.csv);;data/metadata (*.h5)')
         self.readData(filename)
 
@@ -516,8 +521,8 @@ class QAcousticCamera(QScanner):
         '''
         df = self.dataframe()
         xy = df[['y', 'x']].to_numpy()
-        x0, y0, x1, y1 = self.scanner.pattern.rect
-        resolution = self.scanner.pattern.step * 1e-3
+        x0, y0, x1, y1 = self.pattern.rect
+        resolution = self.pattern.step * 1e-3
         grid = np.mgrid[y0:y1:resolution, x0:x1:resolution].T
         signal = df.amplitude * np.exp(1.j * np.radians(df.phase))
         return griddata(xy, signal, grid, fill_value=np.mean(signal))

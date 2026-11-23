@@ -72,4 +72,4 @@ This project follows the conventions of [QInstrument](https://github.com/davidgr
 - Type hints throughout, Python 3.10+ union syntax (`str | None`)
 - NumPy-style docstrings on all classes and public methods
 - Module-level logger, never `print()`
-- Style is the portfolio's (`~/python/STANDARDS.md`): `ruff check .`, configured in `pyproject.toml`, runs in CI as the `Lint` job and as a pre-commit hook; 79 columns, single quotes
+- Style is the portfolio's (`~/python/STANDARDS.md`): `ruff check .`, configured in `pyproject.toml`, runs in CI as the `Lint` job and as a pre-commit hook; 79 columns, single quotes. Types are checked by `pyright` (CI `Types` job, pinned versions in `.github/workflows/tests.yml`, `[tool.pyright]` in `pyproject.toml`) in an environment with PyQt6 6.12.0 and `pyright==1.1.414`
