@@ -5,7 +5,8 @@ import time
 from pathlib import Path
 from QPolargraph import QScanner
 from QPolargraph.patterns.QScanPattern import ScanState
-from QInstrument.instruments import QDS345Widget, QFakeDS345, QSR830Widget, QFakeSR830
+from QInstrument.instruments import (
+    QDS345Widget, QFakeDS345, QSR830Widget, QFakeSR830)
 from qtpy import QtCore, QtGui, QtWidgets
 import numpy as np
 import pandas as pd
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 class SR830Worker(QtCore.QObject):
-    '''Background worker that reads SR830 and correlates readings with position.
+    '''Background worker that reads the SR830 and correlates with position.
 
     Runs ``report()`` in a tight loop on a dedicated thread. Each reading is
     time-stamped and paired with a linearly-interpolated position from a
