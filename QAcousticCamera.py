@@ -4,6 +4,7 @@ import collections
 import time
 from pathlib import Path
 from QPolargraph import QScanner
+from QPolargraph.patterns.QScanPattern import ScanState
 from QInstrument.instruments import QDS345Widget, QFakeDS345, QSR830Widget, QFakeSR830
 from qtpy import QtCore, QtGui, QtWidgets
 import numpy as np
@@ -48,6 +49,11 @@ class SR830Worker(QtCore.QObject):
         thread, read here.  Python's deque is safe for single-writer /
         single-reader access under the GIL.
 
+    Notes
+    -----
+    Timestamps use :func:`time.monotonic` to match the timestamps embedded
+    in :class:`~QPolargraph.QScanPattern.QScanPattern` position data.
+
     Signals
     -------
     dataReady(dict)
@@ -75,8 +81,12 @@ class SR830Worker(QtCore.QObject):
         self._running = True
         pending: list[tuple[float, float, float]] = []
         while self._running:
-            t_s = time.perf_counter()
-            _, amplitude, phase = self._lockin.report()
+            try:
+                t_s = time.monotonic()
+                _, amplitude, phase = self._lockin.report()
+            except Exception:
+                logger.exception('SR830 read failed; stopping acquisition')
+                break
             pending.append((t_s, amplitude, phase))
             self._flush(pending)
         self._flush(pending, final=True)
@@ -142,8 +152,9 @@ class QAcousticCamera(QScanner):
     During a scan with real hardware, an :class:`SR830Worker` runs on a
     dedicated thread, calling ``report()`` as fast as the instrument
     allows and correlating each reading with an interpolated polargraph
-    position.  In fake mode the demo acoustic field is sampled directly
-    at each polargraph position update instead.
+    position from the shared position buffer.  In fake mode the demo
+    acoustic field is sampled directly at each polargraph position update
+    instead.
 
     Parameters
     ----------
@@ -160,32 +171,31 @@ class QAcousticCamera(QScanner):
                  fake: bool = False,
                  data: str | None = None,
                  **kwargs) -> None:
-        configdir = '~/.QAcousticCamera'
-        super().__init__(*args, fake=fake, configdir=configdir, **kwargs)
-        self._setupUi()
-        self._addInstruments(fake)
-        self.adjustSize()
+        # Initialise all instance attrs before super().__init__() so that
+        # connectSignals() (called inside super) never sees unset attributes.
+        self._fake = fake
         self.data: list[list[float]] = []
-        field = self._loadDemoField() if fake else None
-        self._field: LinearNDInterpolator | None = field
+        self._field: LinearNDInterpolator | None = (
+            self._loadDemoField() if fake else None)
+        self._scan_active: bool = False
+        self._collecting: bool = False
         self._position_buffer: collections.deque | None = None
         self._sr830_worker: SR830Worker | None = None
         self._sr830_thread: QtCore.QThread | None = None
+        configdir = '~/.QAcousticCamera'
+        super().__init__(*args, fake=fake, configdir=configdir, **kwargs)
         self.readData(data)
 
-    def _setupUi(self) -> None:
-        '''Set up the UI layout with a data plot and controls.'''
+    def setupUi(self) -> None:
+        '''Extend the scanner UI with instrument widgets and a window icon.'''
+        super().setupUi()
         self.setWindowTitle('QAcousticCamera')
         icon_path = Path(__file__).parent / 'docs' / 'icon.png'
         if icon_path.exists():
             self.setWindowIcon(QtGui.QIcon(str(icon_path)))
-
-    def adjustSize(self) -> None:
-        '''Resize the window to 80% of the available screen area.'''
-        screen = QtWidgets.QApplication.primaryScreen()
-        if screen is not None:
-            geom = screen.availableGeometry()
-            self.resize(int(geom.width() * 0.8), int(geom.height() * 0.8))
+        self._addInstruments(self._fake)
+        geom = QtWidgets.QApplication.primaryScreen().availableGeometry()
+        self.resize(int(geom.width() * 0.8), int(geom.height() * 0.8))
 
     def _addInstruments(self, fake: bool) -> None:
         '''Create and register instrument widgets.
@@ -204,14 +214,16 @@ class QAcousticCamera(QScanner):
         self.config.restore(self.source)
         self.config.restore(self.lockin)
 
-    _SCAN_LOCKED = QScanner._SCAN_LOCKED + ('source', 'lockin')
-
-    def _connectSignals(self) -> None:
+    def connectSignals(self) -> None:
         '''Connect UI actions and scanner signals to their slots.'''
-        super()._connectSignals()
+        super().connectSignals()
         self.actionSaveData.triggered.connect(self.saveData)
         self.actionSaveDataAs.triggered.connect(self.saveDataAs)
         self.actionLoadData.triggered.connect(self.loadData)
+
+    def _lockedWidgets(self) -> list:
+        '''Include instrument widgets in the set locked during scans.'''
+        return super()._lockedWidgets() + [self.source, self.lockin]
 
     @QtCore.Slot()
     def saveSettings(self) -> None:
@@ -221,18 +233,48 @@ class QAcousticCamera(QScanner):
         super().saveSettings()
 
     @QtCore.Slot()
-    def scanStarted(self) -> None:
-        '''Clear data, start SR830 acquisition thread, then begin scanning.
+    def toggleScan(self) -> None:
+        '''Start SR830 acquisition when initiating a new scan.
 
-        In real-hardware mode an :class:`SR830Worker` is created and moved
-        to a dedicated thread before the scan loop starts, so SR830 I/O
-        runs concurrently with polargraph motion.  In fake mode the demo
-        field is sampled directly in :meth:`_onDataReady` instead.
+        Extends :meth:`~QPolargraph.QScanner.QScanner.toggleScan` to
+        call :meth:`_onScanStarting` when the scan state machine is IDLE
+        (i.e. a new scan is being initiated, not a pause or resume).
         '''
+        if not self.scanner.pattern.active() and not self._scan_active:
+            self._onScanStarting()
+        super().toggleScan()
+
+    def _onStateChanged(self, state: ScanState) -> None:
+        '''Handle scan state transitions.
+
+        Extends :meth:`~QPolargraph.QScanner.QScanner._onStateChanged`
+        to call :meth:`_onScanFinished` when the state machine returns
+        to IDLE after a scan — whether it completed normally, was
+        abandoned, or was interrupted.
+
+        Parameters
+        ----------
+        state : ScanState
+            New state of the scan pattern.
+        '''
+        super()._onStateChanged(state)
+        self._collecting = (state == ScanState.SCANNING)
+        if state == ScanState.IDLE and self._scan_active:
+            self._onScanFinished()
+
+    def _onScanStarting(self) -> None:
+        '''Prepare for a new scan: unmute source, clear data, start worker.
+
+        Called by :meth:`toggleScan` when a new scan is being initiated.
+        Starts the :class:`SR830Worker` thread for real-hardware mode so
+        that acquisition is already running when the polargraph begins
+        moving to the scan start position.
+        '''
+        self._scan_active = True
         self.source.device.mute = False
         self.data = []
         self.dataPlot.clear()
-        if self._field is None:
+        if not self._fake and self.lockin.device.isOpen():
             self._position_buffer = collections.deque(maxlen=100)
             self._sr830_worker = SR830Worker(
                 self.lockin.device, self._position_buffer)
@@ -241,42 +283,69 @@ class QAcousticCamera(QScanner):
             self._sr830_thread.started.connect(self._sr830_worker.run)
             self._sr830_worker.dataReady.connect(self._onAcousticData)
             self._sr830_thread.start()
-        super().scanStarted()
+
+    def _onScanFinished(self) -> None:
+        '''Clean up after a scan: stop worker, mute source, redraw.
+
+        Called by :meth:`_onStateChanged` whenever the state returns to
+        IDLE — whether the scan completed normally, was paused then
+        abandoned, or was interrupted.  Waits up to 2 s for the SR830
+        thread to exit so no in-flight readings are lost.
+        '''
+        self._scan_active = False
+        if self._sr830_worker is not None:
+            self._sr830_worker.stop()
+        if self._sr830_thread is not None:
+            self._sr830_thread.quit()
+            self._sr830_thread.wait(2000)
+            self._sr830_thread = None
+        self._sr830_worker = None
+        self._position_buffer = None
+        self.source.device.mute = True
+        self.redrawData()
 
     @QtCore.Slot(object)
     def _onDataReady(self, pos: np.ndarray) -> None:
         '''Handle a position update from the scan loop.
 
-        In fake mode, samples the demo acoustic field at ``pos`` and
-        records the result immediately.  In real-hardware mode, pushes a
-        timestamped position entry to the shared buffer for the
-        :class:`SR830Worker` to use for interpolation.
+        In fake mode, samples the demo acoustic field at ``pos`` during
+        SCANNING only.  In real-hardware mode, pushes a timestamped
+        position entry to the shared buffer throughout all motion so that
+        the :class:`SR830Worker` has position brackets available as soon
+        as SCANNING begins.
 
         Parameters
         ----------
         pos : np.ndarray
-            Current position ``[x, y]`` [m] from the scan pattern.
+            Position data ``[x, y, t]`` from the scan pattern, where
+            ``t`` is a :func:`time.monotonic` timestamp [s].
         '''
         x, y = float(pos[0]), float(pos[1])
         if self._field is not None:
-            signal = self._field([[x, y]])[0]
-            self._appendData(x, y,
-                             float(np.abs(signal)),
-                             float(np.degrees(np.angle(signal))))
+            if self._collecting:
+                signal = self._field([[x, y]])[0]
+                self._appendData(x, y,
+                                 float(np.abs(signal)),
+                                 float(np.degrees(np.angle(signal))))
         elif self._position_buffer is not None:
-            self._position_buffer.append((time.perf_counter(), x, y))
+            self._position_buffer.append((float(pos[2]), x, y))
 
     @QtCore.Slot(dict)
     def _onAcousticData(self, data: dict) -> None:
         '''Receive an interpolated measurement from the SR830 worker.
+
+        Guards against recording during positioning moves: readings
+        whose position was resolved against MOVING-phase positions
+        are discarded here by checking the current scan state.
 
         Parameters
         ----------
         data : dict
             Keys: ``'x'``, ``'y'``, ``'amplitude'``, ``'phase'``.
         '''
-        self._appendData(data['x'], data['y'],
-                         data['amplitude'], data['phase'])
+        if self._collecting:
+            self._appendData(data['x'], data['y'],
+                             data['amplitude'], data['phase'])
 
     def _appendData(self, x: float, y: float,
                     amplitude: float, phase: float) -> None:
@@ -297,24 +366,6 @@ class QAcousticCamera(QScanner):
                      f'phase={phase:.2f}')
         self.dataReady.emit({'x': x, 'y': y,
                              'amplitude': amplitude, 'phase': phase})
-
-    @QtCore.Slot()
-    def scanFinished(self) -> None:
-        '''Stop SR830 acquisition, mute source, and redraw with amplitude.
-
-        Waits up to 2 seconds for the SR830 thread to finish its current
-        ``report()`` call before proceeding, so no readings are lost.
-        '''
-        if self._sr830_worker is not None:
-            self._sr830_worker.stop()
-        if self._sr830_thread is not None:
-            self._sr830_thread.wait(2000)
-            self._sr830_thread = None
-        self._sr830_worker = None
-        self._position_buffer = None
-        super().scanFinished()
-        self.source.device.mute = True
-        self.redrawData()
 
     def hue(self, phase: float | np.ndarray) -> list[float]:
         '''Convert phase angle(s) in degrees to hue values in [0, 1).
