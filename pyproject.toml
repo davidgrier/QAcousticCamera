@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "QAcousticCamera"
-version = "1.1.0"
+version = "1.2.0"
 description = "Scanning holographic acoustic camera"
 readme = "README.md"
 license = { file = "LICENSE.md" }
@@ -30,8 +30,8 @@ dependencies = [
     "pyqtgraph>=0.13",
     "qtpy>=2.0",
     "scipy>=1.8",
-    "QInstrument>=2.3.2",
-    "QPolargraph>=1.2.3",
+    "QInstrument>=3.1",
+    "QPolargraph>=1.6",
 ]
 
 [project.optional-dependencies]
